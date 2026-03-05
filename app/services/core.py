@@ -3,6 +3,8 @@ import logging
 from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
+from app.db import SessionLocal
+from app.models.db_models import TextClassification
 
 load_dotenv()
 
@@ -20,20 +22,6 @@ except Exception as e:
     logger.error(f"Error loading model: {e}")
     classifier = None
 
-#connect to supabase
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-supabase_client: Client = None
-
-if SUPABASE_URL and SUPABASE_KEY:
-    try:
-        supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
-        logger.info("Connected to Supabase successfully.")
-    except Exception as e:
-        logger.error(f"Error connecting to Supabase: {e}")
-else:
-    logger.warning("Missing SUPABASE_URL or SUPABASE_KEY.")
-
 #Function to get prediction
 def get_prediction(text: str):
     if not classifier:
@@ -46,43 +34,49 @@ def get_prediction(text: str):
         "score": round(result["score"], 4)
     }
 
-def save_to_supabase(text: str, label: str, score: float):
-    if not supabase_client:
-        logger.error("Cannot save, Supabase not configured.")
-        return False
-    
+def save_to_db(text: str, label: str, score: float) -> bool:
+    db = SessionLocal() # Mở kết nối
     try:
-        response = supabase_client.table("text_classifications").insert({
-            "input_text": text,
-            "predicted_label": label,
-            "confidence_score": score
-        }).execute()
-        
-        if response.data:
-            logger.info(f"Successfully saved record to Supabase: {label}")
-            return True
-        return False
-        
+        record = TextClassification(
+            input_text=text,
+            predicted_label=label,
+            confidence_score=score
+        )
+        db.add(record) # Thêm vào session
+        db.commit() # Lưu thay đổi xuống Postgres
+        db.refresh(record)
+        return record
     except Exception as e:
-        logger.error(f"Error saving to Supabase: {e}")
+        logger.error(f"Error saving to DB: {e}")
+        db.rollback() # Hoàn tác nếu có lỗi
         return False
+    finally:
+        db.close()
 
 
 def get_recent_results(limit: int = 10):
-    if not supabase_client:
-        logger.error("Cannot fetch, Supabase not configured.")
-        raise RuntimeError("Supabase client not initialized")
+    db = SessionLocal()
 
     try:
-        response = (
-            supabase_client
-            .table("text_classifications")
-            .select("*")
-            .order("created_at", desc=True)
+        records = (
+            db.query(TextClassification)
+            .order_by(TextClassification.created_at.desc())
             .limit(limit)
-            .execute()
+            .all()
         )
-        return response.data or []
+        # Chuyển đổi dữ liệu từ dạng object sang dictionary để trả về API
+        return [
+            {
+                "id": r.id,
+                "input_text": r.input_text,
+                "predicted_label": r.predicted_label,
+                "confidence_score": r.confidence_score,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in records
+        ]
     except Exception as e:
-        logger.error(f"Error fetching recent results from Supabase: {e}")
+        logger.error(f"Error fetching from Postgres: {e}")
         raise
+    finally:
+        db.close()
