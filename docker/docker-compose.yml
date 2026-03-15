@@ -6,6 +6,8 @@ services:
       context: ..
       dockerfile: ./docker/DockerFile
     container_name: text-classification-api
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     environment:
@@ -20,9 +22,10 @@ services:
   db:
     image: postgres:16-alpine
     container_name: text-classification-db
+    env_file:
+      - .env
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=textdb
     volumes:
       - pgdata:/var/lib/postgresql/data

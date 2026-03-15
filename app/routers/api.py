@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from app.models.schemas import TextRequest, PredictResponse
-from app.services.core import get_prediction, save_to_supabase, get_recent_results
+from app.services.core import get_prediction, get_recent_results, save_to_db
 
 router = APIRouter()
 #Root endpoint
@@ -21,7 +21,7 @@ async def predict_text(request: TextRequest):
     try:
         pred = get_prediction(request.text)
         
-        is_saved = save_to_supabase(
+        is_saved = save_to_db(
             text=request.text,
             label=pred["label"],
             score=pred["score"]
