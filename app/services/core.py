@@ -1,6 +1,5 @@
 from transformers import pipeline
 import logging
-from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
 from app.db import SessionLocal
